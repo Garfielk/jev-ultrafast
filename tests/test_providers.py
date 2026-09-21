@@ -20,10 +20,22 @@ def test_typesafe_explicit_configuration_overrides_environment(monkeypatch):
     monkeypatch.setenv("TYPESAFE_MODEL", "environment-model")
     post = Mock(return_value={"model": "explicit-model", "answers": {}})
     provider = TypeSafeProvider(api_key="explicit-key", model="explicit-model")._use_transport(post)
-    request = {"model": provider.model, "state": {}, "questions": {}}
+    request = {"model": "explicit-model", "state": {}, "questions": {}}
 
+    assert provider.model == "explicit-model"
     assert provider.decide(request)["model"] == "explicit-model"
     post.assert_called_once_with(TypeSafeProvider.endpoint, "explicit-key", request)
+
+
+def test_typesafe_missing_api_key_preserves_key_error(monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    post = Mock(side_effect=AssertionError("network called"))
+    provider = TypeSafeProvider()._use_transport(post)
+
+    with pytest.raises(KeyError, match="TYPESAFE_API_KEY"):
+        provider.decide({"model": "jev-latest", "state": {}, "questions": {}})
+
+    post.assert_not_called()
 
 
 def test_openai_explicit_configuration_overrides_environment(monkeypatch):
@@ -39,8 +51,9 @@ def test_openai_explicit_configuration_overrides_environment(monkeypatch):
         reasoning="none",
         headers={"X-Gateway": "test"},
     )._use_transport(post)
-    request = {"model": provider.model, "messages": []}
+    request = {"model": "explicit-model", "messages": []}
 
+    assert provider.model == "explicit-model"
     provider.generate(request)
 
     post.assert_called_once_with(

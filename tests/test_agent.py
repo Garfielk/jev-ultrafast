@@ -282,9 +282,13 @@ def test_agent_routes_both_injected_providers_without_network(runner, monkeypatc
 
 
 def test_agent_can_inject_only_decisions_and_use_default_text(runner, monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TEXT_MODEL_API_KEY", raising=False)
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
     post = Mock(return_value={"choices": [{"message": {"content": '{"text":"book"}'}}]})
+    provider_post = Mock(side_effect=AssertionError("network called"))
     monkeypatch.setattr(model, "post_json", post)
+    monkeypatch.setattr(providers, "post_json", provider_post)
     runner.decision_provider = FakeDecisionProvider()
     runner.state["decision"] = None
     runner.state["status"] = "ready"
@@ -294,10 +298,13 @@ def test_agent_can_inject_only_decisions_and_use_default_text(runner, monkeypatc
 
     assert post.call_count == 1
     assert post.call_args.args[0].endswith("/chat/completions")
+    provider_post.assert_not_called()
     assert runner.state["browser"].act.call_args.kwargs["text"] == "book"
 
 
 def test_agent_can_inject_only_text_and_use_default_decisions(runner, monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("TEXT_MODEL_API_KEY", raising=False)
     monkeypatch.setenv("TYPESAFE_API_KEY", "test")
 
     def post(_url, _key, body):
@@ -310,7 +317,10 @@ def test_agent_can_inject_only_text_and_use_default_decisions(runner, monkeypatc
             },
         }
 
-    monkeypatch.setattr(model, "post_json", Mock(side_effect=post))
+    model_post = Mock(side_effect=post)
+    provider_post = Mock(side_effect=AssertionError("network called"))
+    monkeypatch.setattr(model, "post_json", model_post)
+    monkeypatch.setattr(providers, "post_json", provider_post)
     runner.text_provider = FakeTextProvider()
     runner.state["decision"] = None
     runner.state["status"] = "ready"
@@ -318,6 +328,8 @@ def test_agent_can_inject_only_text_and_use_default_decisions(runner, monkeypatc
     runner.command("predict")
     runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
 
+    assert model_post.call_count == 1
+    provider_post.assert_not_called()
     assert runner.state["decisions"][0]["model"] == "default-decision"
     assert runner.state["browser"].act.call_args.kwargs["text"] == "book"
 
